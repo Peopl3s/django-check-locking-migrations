@@ -1,8 +1,12 @@
 - id: check-django-migration-locks
   name: Check Django Migration Locks
-  description: 'Проверяет, не блокируют ли Django миграции несколько больших таблиц одновременно'
+  description: 'БЛОКИРУЕТ коммит если Django миграции блокируют 2+ больших таблиц одновременно'
   entry: check-migration-locks
   language: python
   types: [python]
-  args: [--min-tables, '2']
+  args: [
+    --min-tables, '2',
+    --strict
+  ]
   files: ^.*/migrations/.*\.py$
+  fail_fast: true  # ⚠️ Останавливаем при первой же ошибке
