@@ -1,0 +1,8 @@
+- id: check-django-migration-locks
+  name: Check Django Migration Locks
+  description: 'Проверяет, не блокируют ли Django миграции несколько больших таблиц одновременно'
+  entry: check-migration-locks
+  language: python
+  types: [python]
+  args: [--min-tables, '2']
+  files: ^.*/migrations/.*\.py$
