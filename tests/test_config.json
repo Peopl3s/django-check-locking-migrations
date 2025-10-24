@@ -1,0 +1,7 @@
+{
+  "tables": ["users", "orders", "payments", "audit_logs"],
+  "min_tables": 2,
+  "app": "myapp",
+  "verbose": true,
+  "strict": true
+}

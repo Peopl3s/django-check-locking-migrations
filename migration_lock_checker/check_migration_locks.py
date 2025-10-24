@@ -89,7 +89,7 @@ def is_migration_file(file_path):
     return (path.suffix == '.py' and
             'migrations' in path.parts and
             path.name != '__init__.py' and
-            re.match(r'^\d{4}_.*\.py$', path.name))
+            bool(re.match(r'^\d{4}_.*\.py$', path.name)))
 
 
 def parse_django_migration_operations(content, tables, app_name=None, verbose=False):
@@ -133,27 +133,56 @@ def parse_django_migration_operations(content, tables, app_name=None, verbose=Fa
 
     # Search for migration operations
     for op_name, sql_op in django_operations.items():
-        pattern = rf"{op_name}\(.*?name=['\"](.*?)['\"]"
-        matches = re.finditer(pattern, content, re.DOTALL | re.IGNORECASE)
+        # Pattern for CreateModel operations with name parameter
+        if op_name == 'CreateModel':
+            pattern = rf"{op_name}\s*\(\s*.*?name\s*=\s*['\"](.*?)['\"]"
+            matches = re.finditer(pattern, content, re.DOTALL | re.IGNORECASE)
 
-        for match in matches:
-            model_name = match.group(1).lower()
-            table_name = convert_model_to_table(model_name, app_name)
+            for match in matches:
+                model_name = match.group(1).lower()
+                table_name = convert_model_to_table(model_name, app_name)
 
-            # Check if this table is in the list of large tables
-            if table_name in [t.lower() for t in tables]:
-                results['locked_tables'].add(table_name)
-                results['operations'].append({
-                    'django_operation': op_name,
-                    'sql_operation': sql_op,
-                    'model_name': model_name,
-                    'table_name': table_name,
-                    'description': f"{op_name} -> {sql_op}",
-                    'risk_level': 'high' if sql_op in ['ALTER TABLE', 'DROP TABLE', 'CREATE INDEX'] else 'medium'
-                })
+                # Check if this table is in the list of large tables
+                if table_name in [t.lower() for t in tables]:
+                    results['locked_tables'].add(table_name)
+                    results['operations'].append({
+                        'django_operation': op_name,
+                        'sql_operation': sql_op,
+                        'model_name': model_name,
+                        'table_name': table_name,
+                        'description': f"{op_name} -> {sql_op}",
+                        'risk_level': 'high' if sql_op in ['ALTER TABLE', 'DROP TABLE', 'CREATE INDEX'] else 'medium'
+                    })
+        
+        # Pattern for operations with model_name parameter
+        else:
+            pattern = rf"{op_name}\s*\(\s*.*?model_name\s*=\s*['\"](.*?)['\"]"
+            matches = re.finditer(pattern, content, re.DOTALL | re.IGNORECASE)
+
+            for match in matches:
+                model_name = match.group(1).lower()
+                table_name = convert_model_to_table(model_name, app_name)
+
+                # Check if this table is in the list of large tables
+                if table_name in [t.lower() for t in tables]:
+                    results['locked_tables'].add(table_name)
+                    results['operations'].append({
+                        'django_operation': op_name,
+                        'sql_operation': sql_op,
+                        'model_name': model_name,
+                        'table_name': table_name,
+                        'description': f"{op_name} -> {sql_op}",
+                        'risk_level': 'high' if sql_op in ['ALTER TABLE', 'DROP TABLE', 'CREATE INDEX'] else 'medium'
+                    })
 
     # Analyze RunSQL operations
+    # Pattern 1: RunSQL with sql parameter
     sql_blocks = re.findall(r'RunSQL\s*\(.*?sql\s*=\s*(.*?)\).*?\)', content, re.DOTALL)
+    
+    # Pattern 2: RunSQL with SQL as first parameter (no sql= keyword)
+    if not sql_blocks:
+        sql_blocks = re.findall(r'RunSQL\s*\(\s*(.*?)\s*(?:,|)\)', content, re.DOTALL)
+    
     for sql_block in sql_blocks:
         sql_text = extract_sql_from_runsql(sql_block)
         if sql_text:
@@ -213,8 +242,8 @@ def analyze_raw_sql(sql_text, tables, verbose=False):
         (r'DROP\s+INDEX\s+.*?\s+ON\s+[`"]?([\w_]+)[`"]?', 'DROP INDEX', 'high'),
         (r'TRUNCATE\s+TABLE\s+[`"]?([\w_]+)[`"]?', 'TRUNCATE TABLE', 'high'),
         (r'DROP\s+TABLE\s+[`"]?([\w_]+)[`"]?', 'DROP TABLE', 'high'),
-        (r'UPDATE\s+[`"]?([\w_]+)[`"]?\s+SET\s+(?!.*WHERE)', 'UPDATE without WHERE', 'high'),
-        (r'DELETE\s+FROM\s+[`"]?([\w_]+)[`"]?\s+(?!WHERE)', 'DELETE without WHERE', 'high'),
+        (r'UPDATE\s+[`"]?([\w_]+)[`"]?\s+SET\s+[^;]*', 'UPDATE without WHERE', 'high'),
+        (r'DELETE\s+FROM\s+[`"]?([\w_]+)[`"]?[^;]*', 'DELETE without WHERE', 'high'),
     ]
 
     for pattern, operation_type, risk_level in lock_patterns:
