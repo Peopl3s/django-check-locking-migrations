@@ -197,9 +197,13 @@ make lint
 # Format code (replaces black)
 make format
 
-# Or use ruff directly
+# Type checking with mypy
+make type-check
+
+# Or use tools directly
 ruff check migration_lock_checker/ tests/
 ruff format migration_lock_checker/ tests/
+mypy migration_lock_checker/
 ```
 
 ## 🤝 Contributing

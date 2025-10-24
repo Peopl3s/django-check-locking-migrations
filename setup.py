@@ -17,6 +17,7 @@ setup(
             'pytest>=6.0',
             'pytest-cov>=2.0',
             'ruff>=0.1.0',
+            'mypy>=1.0.0',
         ],
     },
     entry_points={

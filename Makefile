@@ -1,4 +1,4 @@
-.PHONY: help test test-verbose test-coverage install install-dev clean lint format
+.PHONY: help test test-verbose test-coverage install install-dev clean lint format type-check
 
 help:
 	@echo "Available commands:"
@@ -10,6 +10,7 @@ help:
 	@echo "  clean         Clean up temporary files"
 	@echo "  lint          Run linting"
 	@echo "  format        Format code"
+	@echo "  type-check    Run type checking with mypy"
 
 test:
 	python -m pytest tests/
@@ -40,6 +41,9 @@ lint:
 
 format:
 	ruff format migration_lock_checker/ tests/
+
+type-check:
+	mypy migration_lock_checker/
 
 run-tests:
 	python tests/run_tests.py

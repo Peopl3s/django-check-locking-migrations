@@ -9,13 +9,14 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Dict, List, Set, Any, Optional, Union, Tuple, cast
 
 # Default configuration for pre-commit
 DEFAULT_LARGE_TABLES = ["users", "orders", "payments", "audit_logs", "logs"]
 DEFAULT_MIN_TABLES = 2
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
         description="Pre-commit hook: BLOCKS commit on locks of 2+ large tables in Django migrations"
@@ -54,18 +55,19 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def load_config(config_path):
+def load_config(config_path: Optional[str]) -> Dict[str, Any]:
     """Load configuration from JSON file"""
     if config_path and Path(config_path).exists():
         try:
             with open(config_path) as f:
-                return json.load(f)
+                config = json.load(f)
+                return cast(Dict[str, Any], config)
         except Exception as e:
             print(f"⚠️  Error loading configuration {config_path}: {e}")
     return {}
 
 
-def read_migration_file(file_path):
+def read_migration_file(file_path: str) -> Optional[str]:
     """Read migration file"""
     try:
         with open(file_path, encoding="utf-8") as f:
@@ -75,7 +77,7 @@ def read_migration_file(file_path):
         return None
 
 
-def is_migration_file(file_path):
+def is_migration_file(file_path: str) -> bool:
     """Check if file is a Django migration"""
     path = Path(file_path)
     return (
@@ -86,11 +88,16 @@ def is_migration_file(file_path):
     )
 
 
-def parse_django_migration_operations(content, tables, app_name=None, verbose=False):
+def parse_django_migration_operations(
+    content: Optional[str], 
+    tables: List[str], 
+    app_name: Optional[str] = None, 
+    verbose: bool = False
+) -> Dict[str, Any]:
     """
     Analyze Django migration operations and determine potential locks
     """
-    results = {
+    results: Dict[str, Any] = {
         "locked_tables": set(),
         "operations": [],
         "multiple_locks": False,
@@ -203,7 +210,7 @@ def parse_django_migration_operations(content, tables, app_name=None, verbose=Fa
     return results
 
 
-def convert_model_to_table(model_name, app_name=None):
+def convert_model_to_table(model_name: str, app_name: Optional[str] = None) -> str:
     """Convert Django model name to database table name"""
     table_name = model_name.lower()
     if app_name:
@@ -211,7 +218,7 @@ def convert_model_to_table(model_name, app_name=None):
     return table_name
 
 
-def extract_sql_from_runsql(sql_block):
+def extract_sql_from_runsql(sql_block: Union[str, List[str]]) -> str:
     """Extract SQL text from RunSQL block"""
     if isinstance(sql_block, str):
         sql_block = " ".join(sql_block.split())
@@ -224,15 +231,15 @@ def extract_sql_from_runsql(sql_block):
 
                 sql_list = ast.literal_eval(sql_block)
                 if isinstance(sql_list, list) and len(sql_list) > 0:
-                    return sql_list[0]
+                    return str(sql_list[0])
             except Exception:
                 pass
-    return sql_block
+    return str(sql_block)
 
 
-def analyze_raw_sql(sql_text, tables, verbose=False):
+def analyze_raw_sql(sql_text: str, tables: List[str], verbose: bool = False) -> Dict[str, Any]:
     """Analyze raw SQL for table locks"""
-    results = {"locked_tables": set(), "operations": []}
+    results: Dict[str, Any] = {"locked_tables": set(), "operations": []}
 
     tables_lower = [table.lower() for table in tables]
 
@@ -278,8 +285,13 @@ def analyze_raw_sql(sql_text, tables, verbose=False):
 
 
 def check_migration_files(
-    filenames, tables, app_name, min_tables, verbose, strict=True
-):
+    filenames: List[str], 
+    tables: List[str], 
+    app_name: Optional[str], 
+    min_tables: int, 
+    verbose: bool, 
+    strict: bool = True
+) -> Tuple[bool, List[Dict[str, Any]]]:
     """Check list of migration files"""
     migration_files = [f for f in filenames if is_migration_file(f)]
 
@@ -363,7 +375,7 @@ def check_migration_files(
     return all_passed, critical_migrations
 
 
-def main():
+def main() -> int:
     """Main function"""
     args = parse_arguments()
 
