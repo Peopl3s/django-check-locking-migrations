@@ -3,24 +3,30 @@
 Test runner for Django Migration Lock Checker using pytest
 """
 
-import sys
 import os
 import subprocess
+import sys
+
 
 def run_tests():
     """Run all tests using pytest"""
     # Add the parent directory to the path
-    parent_dir = os.path.join(os.path.dirname(__file__), '..')
-    
+    parent_dir = os.path.join(os.path.dirname(__file__), "..")
+
     # Run pytest with the tests directory
     try:
-        result = subprocess.run([
-            sys.executable, '-m', 'pytest', 
-            os.path.dirname(__file__),
-            '-v',
-            '--tb=short'
-        ], cwd=parent_dir)
-        
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                os.path.dirname(__file__),
+                "-v",
+                "--tb=short",
+            ],
+            cwd=parent_dir,
+        )
+
         return result.returncode
     except subprocess.CalledProcessError as e:
         return e.returncode
@@ -29,5 +35,6 @@ def run_tests():
         print("pip install pytest")
         return 1
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     sys.exit(run_tests())

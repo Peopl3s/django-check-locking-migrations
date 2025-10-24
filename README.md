@@ -181,11 +181,25 @@ make test-coverage # Run tests with coverage report
 git clone https://github.com/Peopl3s/django-check-locking-migrations.git
 cd django-check-locking-migrations
 
-# Install with development dependencies
+# Install with development dependencies (includes ruff for linting/formatting)
 pip install .[dev]
 
 # Install with test dependencies only
 pip install .[test]
+```
+
+### Code Quality
+
+```bash
+# Run linting (replaces flake8)
+make lint
+
+# Format code (replaces black)
+make format
+
+# Or use ruff directly
+ruff check migration_lock_checker/ tests/
+ruff format migration_lock_checker/ tests/
 ```
 
 ## 🤝 Contributing

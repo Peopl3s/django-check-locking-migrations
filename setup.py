@@ -16,8 +16,7 @@ setup(
         'dev': [
             'pytest>=6.0',
             'pytest-cov>=2.0',
-            'black>=21.0',
-            'flake8>=3.8',
+            'ruff>=0.1.0',
         ],
     },
     entry_points={
