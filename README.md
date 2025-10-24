@@ -8,13 +8,14 @@ Pre-commit hook для проверки блокировок нескольки�
 
 ```yaml
 repos:
-  - repo: https://github.com/your-username/django-migration-lock-checker
-    rev: v0.1.0
+  - repo: https://github.com/Peopl3s/django-check-locking-migrations
+    rev: v0.2.0  # используйте последнюю версию
     hooks:
       - id: check-django-migration-locks
-        # Опциональные аргументы:
+        name: 🚫 BLOCK migrations locking multiple big tables
         args: [
-          "--tables", "users", "orders", "payments", "audit_logs",
-          "--min-tables", "2",
-          "--verbose"
+          "--tables", "flat", "project",
+          "--min-tables", "2",  # ⚠️ Блокировать при 2+ таблицах
+          "--verbose",
+          "--strict"  # ⚠️ Обязательно блокировать коммит
         ]
