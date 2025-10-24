@@ -105,11 +105,13 @@ check-migration-locks --config migration-lock-config.json app/migrations/*.py
 - `AddField` - Column addition (ALTER TABLE)
 - `RemoveField` - Column removal (ALTER TABLE)
 - `AlterField` - Column modification (ALTER TABLE)
+- `RenameField` - Column renaming (ALTER TABLE RENAME COLUMN)
 - `RunSQL` - Custom SQL operations
 - `RunPython` - Python code execution
 
 ### SQL Operations
 - `ALTER TABLE` - Table modifications
+- `RENAME COLUMN` - Column renaming operations
 - `CREATE INDEX` - Index creation
 - `DROP INDEX` - Index removal
 - `TRUNCATE TABLE` - Table truncation

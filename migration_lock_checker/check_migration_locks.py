@@ -237,6 +237,7 @@ def analyze_raw_sql(sql_text, tables, verbose=False):
     tables_lower = [table.lower() for table in tables]
 
     lock_patterns = [
+        (r'ALTER\s+TABLE\s+[`"]?([\w_]+)[`"]?\s+RENAME\s+COLUMN', 'RENAME COLUMN', 'high'),
         (r'ALTER\s+TABLE\s+[`"]?([\w_]+)[`"]?\s+', 'ALTER TABLE', 'high'),
         (r'CREATE\s+(UNIQUE\s+)?INDEX\s+.*?\s+ON\s+[`"]?([\w_]+)[`"]?', 'CREATE INDEX', 'high'),
         (r'DROP\s+INDEX\s+.*?\s+ON\s+[`"]?([\w_]+)[`"]?', 'DROP INDEX', 'high'),

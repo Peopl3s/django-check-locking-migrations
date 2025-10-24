@@ -160,6 +160,22 @@ class TestMigrationLockChecker:
         assert len(result['operations']) == 1
         assert result['operations'][0]['sql_operation'] == 'ALTER TABLE'
 
+    def test_parse_django_migration_operations_rename_field(self):
+        """Test parsing Django RenameField operation"""
+        content = '''
+        migrations.RenameField(
+            model_name='User',
+            old_name='username',
+            new_name='login_name',
+        )
+        '''
+        result = parse_django_migration_operations(content, ['auth_user'], 'auth')
+        
+        assert len(result['operations']) == 1
+        assert result['operations'][0]['django_operation'] == 'RenameField'
+        assert result['operations'][0]['sql_operation'] == 'ALTER TABLE (RENAME COLUMN)'
+        assert result['operations'][0]['table_name'] == 'auth_user'
+
     def test_parse_django_migration_operations_multiple_locks(self):
         """Test parsing migration with multiple table locks"""
         content = '''
@@ -379,3 +395,11 @@ class TestEdgeCases:
         result = analyze_raw_sql(sql_text, ['orders'])
         assert len(result['locked_tables']) == 1
         assert result['operations'][0]['sql_operation'] == 'DELETE without WHERE'
+
+    def test_rename_column_sql(self):
+        """Test RENAME COLUMN SQL operation"""
+        sql_text = "ALTER TABLE users RENAME COLUMN username TO login_name;"
+        result = analyze_raw_sql(sql_text, ['users'])
+        assert len(result['locked_tables']) == 1
+        assert result['operations'][0]['sql_operation'] == 'RENAME COLUMN'
+        assert 'users' in result['locked_tables']
