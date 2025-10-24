@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Pre-commit hook для проверки блокировок нескольких больших таблиц в Django миграциях
-БЛОКИРУЕТ коммит если найдены блокировки 2+ больших таблиц
+Pre-commit hook for checking locks on multiple large tables in Django migrations
+BLOCKS commit if locks on 2+ large tables are found
 """
 
 import re
@@ -10,81 +10,81 @@ import argparse
 import json
 from pathlib import Path
 
-# Конфигурация по умолчанию для pre-commit
+# Default configuration for pre-commit
 DEFAULT_LARGE_TABLES = ['users', 'orders', 'payments', 'audit_logs', 'logs']
 DEFAULT_MIN_TABLES = 2
 
 
 def parse_arguments():
-    """Парсинг аргументов командной строки"""
+    """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description='Pre-commit hook: БЛОКИРУЕТ коммит при блокировках 2+ больших таблиц в Django миграциях'
+        description='Pre-commit hook: BLOCKS commit on locks of 2+ large tables in Django migrations'
     )
     parser.add_argument(
         'filenames',
         nargs='*',
-        help='Файлы миграций для проверки'
+        help='Migration files to check'
     )
     parser.add_argument(
         '--tables', '-t',
         nargs='+',
         default=DEFAULT_LARGE_TABLES,
-        help=f'Список БОЛЬШИХ таблиц для проверки (по умолчанию: {DEFAULT_LARGE_TABLES})'
+        help=f'List of LARGE tables to check (default: {DEFAULT_LARGE_TABLES})'
     )
     parser.add_argument(
         '--app', '-a',
         type=str,
-        help='Имя Django приложения (для определения полных имен таблиц)'
+        help='Django app name (for determining full table names)'
     )
     parser.add_argument(
         '--verbose', '-v',
         action='store_true',
-        help='Подробный вывод'
+        help='Verbose output'
     )
     parser.add_argument(
         '--min-tables', '-m',
         type=int,
         default=DEFAULT_MIN_TABLES,
-        help=f'Минимальное количество таблиц для БЛОКИРОВКИ коммита (по умолчанию: {DEFAULT_MIN_TABLES})'
+        help=f'Minimum number of tables to BLOCK commit (default: {DEFAULT_MIN_TABLES})'
     )
     parser.add_argument(
         '--config', '-c',
         type=str,
-        help='JSON файл с конфигурацией'
+        help='JSON configuration file'
     )
     parser.add_argument(
         '--strict', '-s',
         action='store_true',
         default=True,
-        help='Строгий режим - БЛОКИРОВАТЬ коммит при обнаружении проблем (включено по умолчанию)'
+        help='Strict mode - BLOCK commit when problems are detected (enabled by default)'
     )
 
     return parser.parse_args()
 
 
 def load_config(config_path):
-    """Загрузка конфигурации из JSON файла"""
+    """Load configuration from JSON file"""
     if config_path and Path(config_path).exists():
         try:
             with open(config_path, 'r') as f:
                 return json.load(f)
         except Exception as e:
-            print(f"⚠️  Ошибка загрузки конфигурации {config_path}: {e}")
+            print(f"⚠️  Error loading configuration {config_path}: {e}")
     return {}
 
 
 def read_migration_file(file_path):
-    """Чтение файла миграции"""
+    """Read migration file"""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             return f.read()
     except Exception as e:
-        print(f"❌ Ошибка при чтении файла {file_path}: {e}")
+        print(f"❌ Error reading file {file_path}: {e}")
         return None
 
 
 def is_migration_file(file_path):
-    """Проверяет, является ли файл миграцией Django"""
+    """Check if file is a Django migration"""
     path = Path(file_path)
     return (path.suffix == '.py' and
             'migrations' in path.parts and
@@ -94,7 +94,7 @@ def is_migration_file(file_path):
 
 def parse_django_migration_operations(content, tables, app_name=None, verbose=False):
     """
-    Анализирует операции Django миграции и определяет потенциальные блокировки
+    Analyze Django migration operations and determine potential locks
     """
     results = {
         'locked_tables': set(),
@@ -103,19 +103,19 @@ def parse_django_migration_operations(content, tables, app_name=None, verbose=Fa
         'critical_risk': False,
         'migration_type': 'unknown',
         'locked_count': 0,
-        'should_block_commit': False  # ⚠️ Новое поле для блокировки коммита
+        'should_block_commit': False  # ⚠️ New field for commit blocking
     }
 
     if not content:
         return results
 
-    # Паттерны для определения типа миграции
+    # Patterns for determining migration type
     if 'RunPython' in content or 'RunSQL' in content:
         results['migration_type'] = 'data_migration'
     else:
         results['migration_type'] = 'schema_migration'
 
-    # Словарь соответствия операций Django и потенциальных блокировок
+    # Dictionary mapping Django operations to potential locks
     django_operations = {
         'CreateModel': 'CREATE TABLE',
         'DeleteModel': 'DROP TABLE',
@@ -131,7 +131,7 @@ def parse_django_migration_operations(content, tables, app_name=None, verbose=Fa
         'RemoveConstraint': 'ALTER TABLE (DROP CONSTRAINT)',
     }
 
-    # Поиск операций миграции
+    # Search for migration operations
     for op_name, sql_op in django_operations.items():
         pattern = rf"{op_name}\(.*?name=['\"](.*?)['\"]"
         matches = re.finditer(pattern, content, re.DOTALL | re.IGNORECASE)
@@ -140,7 +140,7 @@ def parse_django_migration_operations(content, tables, app_name=None, verbose=Fa
             model_name = match.group(1).lower()
             table_name = convert_model_to_table(model_name, app_name)
 
-            # Проверяем, есть ли эта таблица в списке больших таблиц
+            # Check if this table is in the list of large tables
             if table_name in [t.lower() for t in tables]:
                 results['locked_tables'].add(table_name)
                 results['operations'].append({
@@ -152,7 +152,7 @@ def parse_django_migration_operations(content, tables, app_name=None, verbose=Fa
                     'risk_level': 'high' if sql_op in ['ALTER TABLE', 'DROP TABLE', 'CREATE INDEX'] else 'medium'
                 })
 
-    # Анализ RunSQL операций
+    # Analyze RunSQL operations
     sql_blocks = re.findall(r'RunSQL\s*\(.*?sql\s*=\s*(.*?)\).*?\)', content, re.DOTALL)
     for sql_block in sql_blocks:
         sql_text = extract_sql_from_runsql(sql_block)
@@ -166,14 +166,14 @@ def parse_django_migration_operations(content, tables, app_name=None, verbose=Fa
     results['multiple_locks'] = results['locked_count'] >= 2
     results['critical_risk'] = results['locked_count'] >= 3
 
-    # ⚠️ ОСНОВНОЕ ПРАВИЛО: Блокировать коммит если 2+ больших таблиц
+    # ⚠️ MAIN RULE: Block commit if 2+ large tables
     results['should_block_commit'] = results['locked_count'] >= 2
 
     return results
 
 
 def convert_model_to_table(model_name, app_name=None):
-    """Конвертирует имя модели Django в имя таблицы в БД"""
+    """Convert Django model name to database table name"""
     table_name = model_name.lower()
     if app_name:
         table_name = f"{app_name}_{table_name}"
@@ -181,7 +181,7 @@ def convert_model_to_table(model_name, app_name=None):
 
 
 def extract_sql_from_runsql(sql_block):
-    """Извлекает SQL текст из блока RunSQL"""
+    """Extract SQL text from RunSQL block"""
     if isinstance(sql_block, str):
         sql_block = ' '.join(sql_block.split())
         if sql_block.startswith(('"', "'")):
@@ -199,7 +199,7 @@ def extract_sql_from_runsql(sql_block):
 
 
 def analyze_raw_sql(sql_text, tables, verbose=False):
-    """Анализирует сырой SQL на предмет блокировок таблиц"""
+    """Analyze raw SQL for table locks"""
     results = {
         'locked_tables': set(),
         'operations': []
@@ -213,8 +213,8 @@ def analyze_raw_sql(sql_text, tables, verbose=False):
         (r'DROP\s+INDEX\s+.*?\s+ON\s+[`"]?([\w_]+)[`"]?', 'DROP INDEX', 'high'),
         (r'TRUNCATE\s+TABLE\s+[`"]?([\w_]+)[`"]?', 'TRUNCATE TABLE', 'high'),
         (r'DROP\s+TABLE\s+[`"]?([\w_]+)[`"]?', 'DROP TABLE', 'high'),
-        (r'UPDATE\s+[`"]?([\w_]+)[`"]?\s+SET\s+(?!.*WHERE)', 'UPDATE без WHERE', 'high'),
-        (r'DELETE\s+FROM\s+[`"]?([\w_]+)[`"]?\s+(?!WHERE)', 'DELETE без WHERE', 'high'),
+        (r'UPDATE\s+[`"]?([\w_]+)[`"]?\s+SET\s+(?!.*WHERE)', 'UPDATE without WHERE', 'high'),
+        (r'DELETE\s+FROM\s+[`"]?([\w_]+)[`"]?\s+(?!WHERE)', 'DELETE without WHERE', 'high'),
     ]
 
     for pattern, operation_type, risk_level in lock_patterns:
@@ -238,20 +238,20 @@ def analyze_raw_sql(sql_text, tables, verbose=False):
 
 
 def check_migration_files(filenames, tables, app_name, min_tables, verbose, strict=True):
-    """Проверяет список файлов миграций"""
+    """Check list of migration files"""
     migration_files = [f for f in filenames if is_migration_file(f)]
 
     if not migration_files:
         if verbose:
-            print("📝 Файлы миграций не найдены для проверки")
-        return True, []  # ✅ Пропускаем если нет миграций
+            print("📝 No migration files found for checking")
+        return True, []  # ✅ Skip if no migrations
 
     all_passed = True
     critical_migrations = []
 
-    print(f"🔍 Pre-commit: проверка {len(migration_files)} миграций на блокировки больших таблиц")
-    print(f"📊 Мониторим таблицы: {', '.join(tables)}")
-    print(f"🚫 БЛОКИРОВКА коммита при: {min_tables}+ заблокированных таблицах")
+    print(f"🔍 Pre-commit: checking {len(migration_files)} migrations for large table locks")
+    print(f"📊 Monitoring tables: {', '.join(tables)}")
+    print(f"🚫 COMMIT BLOCKED at: {min_tables}+ locked tables")
     print("-" * 60)
 
     for migration_file in migration_files:
@@ -261,7 +261,7 @@ def check_migration_files(filenames, tables, app_name, min_tables, verbose, stri
 
         results = parse_django_migration_operations(content, tables, app_name, verbose)
 
-        # ⚠️ ОСНОВНАЯ ПРОВЕРКА: блокируем если 2+ таблиц
+        # ⚠️ MAIN CHECK: block if 2+ tables
         if results['should_block_commit']:
             all_passed = False
             critical_migrations.append({
@@ -272,55 +272,55 @@ def check_migration_files(filenames, tables, app_name, min_tables, verbose, stri
             })
 
             print(f"❌ {migration_file}")
-            print(f"   🚨 ЗАБЛОКИРОВАНО {results['locked_count']} БОЛЬШИХ ТАБЛИЦ: {', '.join(results['locked_tables'])}")
+            print(f"   🚨 BLOCKED {results['locked_count']} LARGE TABLES: {', '.join(results['locked_tables'])}")
 
             if verbose and results['operations']:
-                print("   📋 Опасные операции:")
+                print("   📋 Dangerous operations:")
                 for op in results['operations']:
                     if op['table_name'] in results['locked_tables']:
                         print(f"     • {op['description']} -> {op['table_name']}")
         else:
-            status = "✅ OK" if results['locked_count'] == 0 else "⚠️  Предупреждение (1 таблица)"
-            print(f"{status} {migration_file} - заблокировано таблиц: {results['locked_count']}")
+            status = "✅ OK" if results['locked_count'] == 0 else "⚠️  Warning (1 table)"
+            print(f"{status} {migration_file} - locked tables: {results['locked_count']}")
 
-    # Вывод итогов
+    # Output results
     print("-" * 60)
     if critical_migrations:
-        print(f"🚫 КОММИТ ЗАБЛОКИРОВАН!")
-        print(f"🚨 Обнаружены критические миграции ({len(critical_migrations)}):")
+        print(f"🚫 COMMIT BLOCKED!")
+        print(f"🚨 Critical migrations found ({len(critical_migrations)}):")
 
         for mig in critical_migrations:
             print(f"\n   📁 {mig['file']}")
-            print(f"   📊 Заблокировано таблиц: {mig['locked_count']}")
-            print(f"   🗂️  Таблицы: {', '.join(mig['locked_tables'])}")
+            print(f"   📊 Locked tables: {mig['locked_count']}")
+            print(f"   🗂️  Tables: {', '.join(mig['locked_tables'])}")
 
             if verbose:
-                print("   ⚠️  Опасные операции:")
+                print("   ⚠️  Dangerous operations:")
                 for op in mig['operations']:
                     if op['table_name'] in mig['locked_tables']:
                         print(f"     • {op['description']}")
 
-        print(f"\n💡 КАК ИСПРАВИТЬ:")
-        print("   1. Разбейте миграцию на несколько частей")
-        print("   2. Используйте `Atomic = False` в классе миграции")
-        print("   3. Выполняйте операции последовательно в разных миграциях")
-        print("   4. Для срочных фиксов используйте: git commit --no-verify")
-        print("\n🔒 Коммит ЗАБЛОКИРОВАН из-за риска блокировок БД!")
+        print(f"\n💡 HOW TO FIX:")
+        print("   1. Split migration into multiple parts")
+        print("   2. Use `Atomic = False` in migration class")
+        print("   3. Execute operations sequentially in different migrations")
+        print("   4. For urgent fixes use: git commit --no-verify")
+        print("\n🔒 Commit BLOCKED due to DB lock risk!")
 
     else:
-        print("✅ Все миграции прошли проверку! Коммит разрешен.")
+        print("✅ All migrations passed check! Commit allowed.")
 
     return all_passed, critical_migrations
 
 
 def main():
-    """Основная функция"""
+    """Main function"""
     args = parse_arguments()
 
-    # Загрузка конфигурации
+    # Load configuration
     config = load_config(args.config) if args.config else {}
 
-    # Объединение конфигураций (аргументы имеют приоритет)
+    # Merge configurations (arguments have priority)
     tables = args.tables
     app_name = args.app or config.get('app')
     min_tables = args.min_tables
@@ -332,17 +332,17 @@ def main():
             print("📝 No files provided for checking")
         return 0
 
-    # Проверка миграций
+    # Check migrations
     success, critical_migrations = check_migration_files(
         args.filenames, tables, app_name, min_tables, verbose, strict
     )
 
-    # ⚠️ ВОЗВРАЩАЕМ ОШИБКУ ЕСЛИ НАЙДЕНЫ КРИТИЧЕСКИЕ МИГРАЦИИ
+    # ⚠️ RETURN ERROR IF CRITICAL MIGRATIONS FOUND
     if critical_migrations:
-        print(f"\n❌ Pre-commit hook FAILED: обнаружены блокировки {len(critical_migrations)} миграций")
-        return 1  # ⚠️ БЛОКИРУЕМ КОММИТ
+        print(f"\n❌ Pre-commit hook FAILED: locks found in {len(critical_migrations)} migrations")
+        return 1  # ⚠️ BLOCK COMMIT
 
-    return 0  # ✅ РАЗРЕШАЕМ КОММИТ
+    return 0  # ✅ ALLOW COMMIT
 
 
 if __name__ == "__main__":
