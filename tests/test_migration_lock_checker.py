@@ -439,3 +439,141 @@ class TestEdgeCases:
         assert len(result["locked_tables"]) == 1
         assert result["operations"][0].sql_operation == "RENAME COLUMN"
         assert "users" in result["locked_tables"]
+
+
+class TestSampleMigrations:
+    """Test cases for sample migration files"""
+
+    def test_sample_migration_0001_initial(self):
+        """Test 0001_initial.py - safe single table migration"""
+        migration_file = "tests/sample_migrations/0001_initial.py"
+        content = read_file(migration_file)
+        
+        tables_set: FrozenSet[str] = frozenset(["myapp_user"])
+        result = parse_django_migration_operations(content, tables_set, "myapp")
+        
+        assert result["migration_type"] == "schema_migration"
+        assert len(result["operations"]) == 1
+        assert result["operations"][0].django_operation == "CreateModel"
+        assert result["operations"][0].table_name == "myapp_user"
+        assert result["should_block_commit"] is False  # Single table, safe
+
+    def test_sample_migration_0002_critical(self):
+        """Test 0002_critical_migration.py - critical multi-table migration"""
+        migration_file = "tests/sample_migrations/0002_critical_migration.py"
+        content = read_file(migration_file)
+        
+        tables_set: FrozenSet[str] = frozenset(["myapp_user", "myapp_order", "payments"])
+        result = parse_django_migration_operations(content, tables_set, "myapp")
+        
+        assert result["migration_type"] == "schema_migration"
+        assert len(result["operations"]) == 3  # 2 AddField + 1 RunSQL (forward only)
+        assert result["should_block_commit"] is True  # Multiple tables, critical
+        assert result["locked_count"] == 3
+
+    def test_sample_migration_0003_runpython(self):
+        """Test 0003_runpython_migration.py - data migration"""
+        migration_file = "tests/sample_migrations/0003_runpython_migration.py"
+        content = read_file(migration_file)
+        
+        tables_set: FrozenSet[str] = frozenset(["myapp_user"])
+        result = parse_django_migration_operations(content, tables_set, "myapp")
+        
+        assert result["migration_type"] == "data_migration"
+        assert len(result["operations"]) == 1
+        assert result["operations"][0].django_operation == "RunPython"
+        assert result["should_block_commit"] is False  # Data migration, safe
+
+    def test_sample_migration_0004_complex_sql(self):
+        """Test 0004_complex_sql_migration.py - complex SQL operations"""
+        migration_file = "tests/sample_migrations/0004_complex_sql_migration.py"
+        content = read_file(migration_file)
+        
+        tables_set: FrozenSet[str] = frozenset(["myapp_user", "myapp_order"])
+        result = parse_django_migration_operations(content, tables_set, "myapp")
+        
+        assert result["migration_type"] == "data_migration"
+        assert len(result["operations"]) == 2  # 2 RunSQL operations (each with multiple SQL statements)
+        assert result["should_block_commit"] is True  # Multiple tables affected
+        assert result["locked_count"] == 2
+
+    def test_sample_migration_0005_rename_operations(self):
+        """Test 0005_rename_operations.py - rename operations"""
+        migration_file = "tests/sample_migrations/0005_rename_operations.py"
+        content = read_file(migration_file)
+        
+        tables_set: FrozenSet[str] = frozenset(["myapp_user", "myapp_purchaseorder"])
+        result = parse_django_migration_operations(content, tables_set, "myapp")
+        
+        assert result["migration_type"] == "schema_migration"
+        assert len(result["operations"]) == 3  # 1 RenameModel + 2 RenameField
+        assert result["should_block_commit"] is True  # Multiple tables
+        assert result["locked_count"] == 2
+
+    def test_sample_migration_0006_index_constraints(self):
+        """Test 0006_index_constraints_migration.py - index and constraint operations"""
+        migration_file = "tests/sample_migrations/0006_index_constraints_migration.py"
+        content = read_file(migration_file)
+        
+        tables_set: FrozenSet[str] = frozenset(["myapp_user", "myapp_purchaseorder"])
+        result = parse_django_migration_operations(content, tables_set, "myapp")
+        
+        assert result["migration_type"] == "schema_migration"
+        assert len(result["operations"]) == 4  # 2 AddIndex + 2 Alter*Together
+        assert result["should_block_commit"] is True  # Multiple tables
+        assert result["locked_count"] == 2
+
+    def test_sample_migration_0007_foreign_key(self):
+        """Test 0007_foreign_key_migration.py - foreign key operations"""
+        migration_file = "tests/sample_migrations/0007_foreign_key_migration.py"
+        content = read_file(migration_file)
+        
+        tables_set: FrozenSet[str] = frozenset(["myapp_user", "myapp_purchaseorder"])
+        result = parse_django_migration_operations(content, tables_set, "myapp")
+        
+        assert result["migration_type"] == "schema_migration"
+        assert len(result["operations"]) == 3  # 2 AddField + 1 AlterField
+        assert result["should_block_commit"] is True  # Multiple tables
+        assert result["locked_count"] == 2
+
+    def test_sample_migration_0008_data_only(self):
+        """Test 0008_data_only_migration.py - data-only operations"""
+        migration_file = "tests/sample_migrations/0008_data_only_migration.py"
+        content = read_file(migration_file)
+        
+        tables_set: FrozenSet[str] = frozenset(["myapp_user", "myapp_purchaseorder"])
+        result = parse_django_migration_operations(content, tables_set, "myapp")
+        
+        assert result["migration_type"] == "data_migration"
+        assert len(result["operations"]) == 2  # 1 RunPython + 1 RunSQL (forward only)
+        # Data migrations should not block commits even with multiple tables
+        assert result["should_block_commit"] is False
+
+    def test_check_migration_files_with_sample_migrations(self):
+        """Test checking migration files with sample migrations"""
+        sample_migrations = [
+            "tests/sample_migrations/0001_initial.py",
+            "tests/sample_migrations/0002_critical_migration.py",
+            "tests/sample_migrations/0003_runpython_migration.py",
+            "tests/sample_migrations/0004_complex_sql_migration.py",
+        ]
+        
+        tables_to_check = ["myapp_user", "myapp_order", "myapp_purchaseorder", "payments"]
+        result = check_migration_files(sample_migrations, tables_to_check, "myapp", 2, False)
+        
+        assert result[0] is False  # Should fail due to critical migrations
+        assert len(result[1]) >= 2  # At least 2 critical migrations (0002 and 0004)
+
+    def test_check_migration_files_safe_only(self):
+        """Test checking with only safe migrations"""
+        safe_migrations = [
+            "tests/sample_migrations/0001_initial.py",
+            "tests/sample_migrations/0003_runpython_migration.py",
+            "tests/sample_migrations/0008_data_only_migration.py",
+        ]
+        
+        tables_to_check = ["myapp_user", "myapp_order", "myapp_purchaseorder"]
+        result = check_migration_files(safe_migrations, tables_to_check, "myapp", 2, False)
+        
+        assert result[0] is True  # Should pass - only safe migrations
+        assert len(result[1]) == 0  # No critical migrations

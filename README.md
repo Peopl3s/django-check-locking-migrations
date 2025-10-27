@@ -2,7 +2,7 @@
 
 🚫 **Pre-commit hook that blocks commits when Django migrations lock multiple large tables simultaneously**
 
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-44%20passing-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.6+-blue.svg)](https://python.org)
 [![Django](https://img.shields.io/badge/django-2.2+-green.svg)](https://djangoproject.com)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -18,7 +18,7 @@ This tool prevents dangerous database migrations that could lock multiple large 
 - **🎛️ Configurable**: Define which tables are "large" and set your risk tolerance
 - **📊 Detailed Reporting**: Clear output showing which tables are locked and why
 - **🛠️ Easy Integration**: Simple setup with pre-commit or manual usage
-- **🧪 Well Tested**: Comprehensive test suite with 29+ tests using pytest
+- **🧪 Well Tested**: Comprehensive test suite with 40+ tests using pytest
 
 ## 🚀 Quick Start
 
