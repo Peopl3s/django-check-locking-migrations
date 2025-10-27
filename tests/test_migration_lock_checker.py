@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Tests for Django Migration Lock Checker
+Tests for Django Migration Lock Checker (final version)
 """
 
 import os
 import sys
 import tempfile
+from typing import FrozenSet
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,7 +24,7 @@ from migration_lock_checker.check_migration_locks import (
     main,
     parse_arguments,
     parse_django_migration_operations,
-    read_migration_file,
+    read_file,
 )
 
 
@@ -32,7 +33,6 @@ def temp_dir():
     """Create a temporary directory for test files"""
     temp_dir = tempfile.mkdtemp()
     yield temp_dir
-    # Cleanup
     import shutil
 
     shutil.rmtree(temp_dir, ignore_errors=True)
@@ -59,8 +59,8 @@ class TestMigrationLockChecker:
     def test_convert_model_to_table(self):
         """Test model to table name conversion"""
         # Test without app name
-        assert convert_model_to_table("User") == "user"
-        assert convert_model_to_table("UserProfile") == "userprofile"
+        assert convert_model_to_table("User", None) == "user"
+        assert convert_model_to_table("UserProfile", None) == "userprofile"
 
         # Test with app name
         assert convert_model_to_table("User", "auth") == "auth_user"
@@ -84,9 +84,18 @@ class TestMigrationLockChecker:
     @pytest.mark.parametrize(
         "sql_block,expected",
         [
-            ('"SELECT * FROM users"', "SELECT * FROM users"),
-            ("'UPDATE users SET active = True'", "UPDATE users SET active = True"),
-            ('["SELECT * FROM users", "SELECT * FROM orders"]', "SELECT * FROM users"),
+            ('"SELECT * FROM users"', ["SELECT * FROM users"]),
+            ("'UPDATE users SET active = True'", ["UPDATE users SET active = True"]),
+            (
+                '["SELECT * FROM users", "SELECT * FROM orders"]',
+                ["SELECT * FROM users", "SELECT * FROM orders"],
+            ),
+            ("('DROP TABLE logs',)", ["DROP TABLE logs"]),
+            (
+                '"""ALTER TABLE users ADD col INT;"""',
+                ["ALTER TABLE users ADD col INT;"],
+            ),
+            ("", []),
         ],
     )
     def test_extract_sql_from_runsql(self, sql_block, expected):
@@ -97,12 +106,13 @@ class TestMigrationLockChecker:
     def test_analyze_raw_sql(self):
         """Test raw SQL analysis for table locks"""
         sql_text = "ALTER TABLE users ADD COLUMN email VARCHAR(255);"
-        result = analyze_raw_sql(sql_text, ["users", "orders"])
+        tables_set: FrozenSet[str] = frozenset(["users", "orders"])
+        result = analyze_raw_sql(sql_text, tables_set)
 
         assert len(result["locked_tables"]) == 1
         assert "users" in result["locked_tables"]
         assert len(result["operations"]) == 1
-        assert result["operations"][0]["sql_operation"] == "ALTER TABLE"
+        assert result["operations"][0].sql_operation == "ALTER TABLE"
 
     def test_analyze_raw_sql_multiple_operations(self):
         """Test raw SQL analysis with multiple operations"""
@@ -111,12 +121,11 @@ class TestMigrationLockChecker:
         CREATE INDEX idx_orders_status ON orders(status);
         DROP TABLE payments;
         """
-        result = analyze_raw_sql(sql_text, ["users", "orders", "payments"])
+        tables_set: FrozenSet[str] = frozenset(["users", "orders", "payments"])
+        result = analyze_raw_sql(sql_text, tables_set)
 
         assert len(result["locked_tables"]) == 3
-        assert "users" in result["locked_tables"]
-        assert "orders" in result["locked_tables"]
-        assert "payments" in result["locked_tables"]
+        assert set(result["locked_tables"]) == {"users", "orders", "payments"}
         assert len(result["operations"]) == 3
 
     def test_parse_django_migration_operations_create_model(self):
@@ -130,12 +139,14 @@ class TestMigrationLockChecker:
             ],
         )
         """
-        result = parse_django_migration_operations(content, ["auth_user"], "auth")
+        tables_set: FrozenSet[str] = frozenset(["auth_user"])
+        result = parse_django_migration_operations(content, tables_set, "auth")
 
         assert result["migration_type"] == "schema_migration"
         assert len(result["operations"]) == 1
-        assert result["operations"][0]["django_operation"] == "CreateModel"
-        assert result["operations"][0]["table_name"] == "auth_user"
+        op = result["operations"][0]
+        assert op.django_operation == "CreateModel"
+        assert op.table_name == "auth_user"
 
     def test_parse_django_migration_operations_add_field(self):
         """Test parsing Django AddField operation"""
@@ -146,11 +157,13 @@ class TestMigrationLockChecker:
             field=models.EmailField(max_length=254),
         )
         """
-        result = parse_django_migration_operations(content, ["auth_user"], "auth")
+        tables_set: FrozenSet[str] = frozenset(["auth_user"])
+        result = parse_django_migration_operations(content, tables_set, "auth")
 
         assert len(result["operations"]) == 1
-        assert result["operations"][0]["django_operation"] == "AddField"
-        assert result["operations"][0]["table_name"] == "auth_user"
+        op = result["operations"][0]
+        assert op.django_operation == "AddField"
+        assert op.table_name == "auth_user"
 
     def test_parse_django_migration_operations_runsql(self):
         """Test parsing Django RunSQL operation"""
@@ -160,11 +173,13 @@ class TestMigrationLockChecker:
             reverse_sql="ALTER TABLE users DROP COLUMN email;"
         )
         """
-        result = parse_django_migration_operations(content, ["users"])
+        tables_set: FrozenSet[str] = frozenset(["users"])
+        result = parse_django_migration_operations(content, tables_set, None)
 
         assert result["migration_type"] == "data_migration"
         assert len(result["operations"]) == 1
-        assert result["operations"][0]["sql_operation"] == "ALTER TABLE"
+        op = result["operations"][0]
+        assert op.sql_operation == "ALTER TABLE"
 
     def test_parse_django_migration_operations_rename_field(self):
         """Test parsing Django RenameField operation"""
@@ -175,12 +190,14 @@ class TestMigrationLockChecker:
             new_name='login_name',
         )
         """
-        result = parse_django_migration_operations(content, ["auth_user"], "auth")
+        tables_set: FrozenSet[str] = frozenset(["auth_user"])
+        result = parse_django_migration_operations(content, tables_set, "auth")
 
         assert len(result["operations"]) == 1
-        assert result["operations"][0]["django_operation"] == "RenameField"
-        assert result["operations"][0]["sql_operation"] == "ALTER TABLE (RENAME COLUMN)"
-        assert result["operations"][0]["table_name"] == "auth_user"
+        op = result["operations"][0]
+        assert op.django_operation == "RenameField"
+        assert op.sql_operation == "ALTER TABLE (RENAME COLUMN)"
+        assert op.table_name == "auth_user"
 
     def test_parse_django_migration_operations_multiple_locks(self):
         """Test parsing migration with multiple table locks"""
@@ -196,9 +213,8 @@ class TestMigrationLockChecker:
             field=models.CharField(max_length=50),
         )
         """
-        result = parse_django_migration_operations(
-            content, ["myapp_user", "myapp_order"], "myapp"
-        )
+        tables_set: FrozenSet[str] = frozenset(["myapp_user", "myapp_order"])
+        result = parse_django_migration_operations(content, tables_set, "myapp")
 
         assert len(result["locked_tables"]) == 2
         assert result["should_block_commit"] is True
@@ -283,25 +299,23 @@ class TestMigrationLockChecker:
         config_content = '{"tables": ["users", "orders"'  # Invalid JSON
         config_file = create_temp_file(temp_dir, "config.json", config_content)
 
-        with patch("builtins.print") as mock_print:
+        with patch("builtins.print"):
             result = load_config(config_file)
             assert result == {}
-            mock_print.assert_called()
 
-    def test_read_migration_file_success(self, temp_dir):
+    def test_read_file_success(self, temp_dir):
         """Test successful migration file reading"""
         content = "Test migration content"
         migration_file = create_temp_file(temp_dir, "0001_test.py", content)
 
-        result = read_migration_file(migration_file)
+        result = read_file(migration_file)
         assert result == content
 
-    def test_read_migration_file_error(self):
+    def test_read_file_error(self):
         """Test reading migration file that doesn't exist"""
-        with patch("builtins.print") as mock_print:
-            result = read_migration_file("/nonexistent/file.py")
+        with patch("builtins.print"):
+            result = read_file("/nonexistent/file.py")
             assert result is None
-            mock_print.assert_called()
 
     @patch("sys.argv", ["check-migration-locks", "--tables", "users", "orders"])
     def test_parse_arguments_default(self):
@@ -329,7 +343,6 @@ class TestMigrationLockChecker:
         mock_args.app = None
         mock_args.min_tables = 2
         mock_args.verbose = False
-        mock_args.strict = True
         mock_args.config = None
         mock_parse_args.return_value = mock_args
 
@@ -352,7 +365,6 @@ class TestMigrationLockChecker:
         mock_args.app = None
         mock_args.min_tables = 2
         mock_args.verbose = False
-        mock_args.strict = True
         mock_args.config = None
         mock_parse_args.return_value = mock_args
 
@@ -382,7 +394,8 @@ class TestEdgeCases:
 
     def test_empty_migration_content(self):
         """Test parsing empty migration content"""
-        result = parse_django_migration_operations("", ["users"])
+        tables_set: FrozenSet[str] = frozenset(["users"])
+        result = parse_django_migration_operations("", tables_set, None)
         assert result["locked_count"] == 0
         assert result["should_block_commit"] is False
 
@@ -391,33 +404,38 @@ class TestEdgeCases:
         content = """
         migrations.RunPython(forward_func, reverse_func)
         """
-        result = parse_django_migration_operations(content, ["users"])
+        tables_set: FrozenSet[str] = frozenset(["users"])
+        result = parse_django_migration_operations(content, tables_set, None)
         assert result["migration_type"] == "data_migration"
 
     def test_sql_without_table_locks(self):
         """Test SQL that doesn't lock monitored tables"""
         sql_text = "SELECT * FROM small_table;"
-        result = analyze_raw_sql(sql_text, ["users", "orders"])
+        tables_set: FrozenSet[str] = frozenset(["users", "orders"])
+        result = analyze_raw_sql(sql_text, tables_set)
         assert len(result["locked_tables"]) == 0
 
     def test_update_without_where(self):
         """Test UPDATE without WHERE clause"""
         sql_text = "UPDATE users SET active = true;"
-        result = analyze_raw_sql(sql_text, ["users"])
+        tables_set: FrozenSet[str] = frozenset(["users"])
+        result = analyze_raw_sql(sql_text, tables_set)
         assert len(result["locked_tables"]) == 1
-        assert result["operations"][0]["sql_operation"] == "UPDATE without WHERE"
+        assert result["operations"][0].sql_operation == "UPDATE without WHERE"
 
     def test_delete_without_where(self):
         """Test DELETE without WHERE clause"""
         sql_text = "DELETE FROM orders;"
-        result = analyze_raw_sql(sql_text, ["orders"])
+        tables_set: FrozenSet[str] = frozenset(["orders"])
+        result = analyze_raw_sql(sql_text, tables_set)
         assert len(result["locked_tables"]) == 1
-        assert result["operations"][0]["sql_operation"] == "DELETE without WHERE"
+        assert result["operations"][0].sql_operation == "DELETE without WHERE"
 
     def test_rename_column_sql(self):
         """Test RENAME COLUMN SQL operation"""
         sql_text = "ALTER TABLE users RENAME COLUMN username TO login_name;"
-        result = analyze_raw_sql(sql_text, ["users"])
+        tables_set: FrozenSet[str] = frozenset(["users"])
+        result = analyze_raw_sql(sql_text, tables_set)
         assert len(result["locked_tables"]) == 1
-        assert result["operations"][0]["sql_operation"] == "RENAME COLUMN"
+        assert result["operations"][0].sql_operation == "RENAME COLUMN"
         assert "users" in result["locked_tables"]
