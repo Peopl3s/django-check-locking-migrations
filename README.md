@@ -208,6 +208,9 @@ mypy migration_lock_checker/
 
 ## 🤝 Contributing
 
+Contributions are welcome! Please read our [**CONTRIBUTING.md**](CONTRIBUTING.md) for detailed guidelines on how to contribute to this project.
+
+**Quick Start:**
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
 3. Make your changes and add tests
