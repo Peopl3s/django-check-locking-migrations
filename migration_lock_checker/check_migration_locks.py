@@ -10,20 +10,31 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple, cast, final
+from typing import (
+    Any,
+    Dict,
+    Final,
+    FrozenSet,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    cast,
+    final,
+)
 
 # Default configuration
-DEFAULT_LARGE_TABLES = ["users", "orders", "payments", "audit_logs", "logs"]
-DEFAULT_MIN_TABLES = 2
+DEFAULT_LARGE_TABLES: Final[list[str]] = ["users", "orders", "payments", "audit_logs", "logs"]
+DEFAULT_MIN_TABLES: Final[int] = 2
 
 # Regex patterns as constants
-CREATE_MODEL_PATTERN = re.compile(
+CREATE_MODEL_PATTERN: re.Pattern[str] = re.compile(
     r"CreateModel\s*\(\s*.*?name\s*=\s*['\"](.*?)['\"]", re.DOTALL | re.IGNORECASE
 )
-MODEL_OP_PATTERN = re.compile(
+MODEL_OP_PATTERN: re.Pattern[str] = re.compile(
     r"(\w+)\s*\(\s*.*?model_name\s*=\s*['\"](.*?)['\"]", re.DOTALL | re.IGNORECASE
 )
-RUNSQL_PATTERN = re.compile(r"RunSQL\s*\((.*?)\)", re.DOTALL)
+RUNSQL_PATTERN: re.Pattern[str] = re.compile(r"RunSQL\s*\((.*?)\)", re.DOTALL)
 
 # Mapping of Django ops to SQL equivalents and risk
 DJANGO_OP_INFO = {
@@ -43,13 +54,13 @@ DJANGO_OP_INFO = {
 
 
 @final
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=True, slots=True, kw_only=True) # type: ignore[call-overload]
 class MigrationOperation:
     django_operation: str
     sql_operation: str
     table_name: str
     description: str
-    risk_level: str  # "high" | "medium"
+    risk_level: str
     model_name: Optional[str] = None
     sql_snippet: Optional[str] = None
 
