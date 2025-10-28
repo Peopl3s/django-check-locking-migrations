@@ -17,6 +17,7 @@ This tool prevents dangerous database migrations that could lock multiple large 
 - **⚡ Real-time Blocking**: Pre-commit hook that stops dangerous commits before they happen
 - **🎛️ Configurable**: Define which tables are "large" and set your risk tolerance
 - **📊 Detailed Reporting**: Clear output showing which tables are locked and why
+- **⏭️ Ignore Comments**: Skip specific migrations using special comments (like `# nolock`)
 - **🛠️ Easy Integration**: Simple setup with pre-commit or manual usage
 - **🧪 Well Tested**: Comprehensive test suite with 40+ tests using pytest
 
@@ -97,6 +98,79 @@ Use it with:
 ```bash
 check-migration-locks --config migration-lock-config.json app/migrations/*.py
 ```
+
+## ⏭️ Ignoring Specific Migrations
+
+Sometimes you may need to bypass the lock check for specific migrations that are safe to run despite locking multiple tables. You can add special ignore comments to your migration files.
+
+### Supported Ignore Comments
+
+Add any of these comments to your migration file to skip the lock check:
+
+```python
+# nolock
+# no-lock-check
+# ignore-lock-check
+```
+
+Or use docstring format:
+```python
+""" nolock """
+''' nolock '''
+```
+
+### Example Usage
+
+```python
+"""
+Migration that locks multiple tables but is safe to run
+# nolock
+"""
+
+from django.db import migrations, models
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ("myapp", "0001_initial"),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name="User",
+            name="is_active",
+            field=models.BooleanField(default=True),
+        ),
+        migrations.AddField(
+            model_name="Order",
+            name="status",
+            field=models.CharField(max_length=50, default="pending"),
+        ),
+        migrations.RunSQL(
+            "ALTER TABLE payments ADD COLUMN processed BOOLEAN DEFAULT FALSE;",
+            reverse_sql="ALTER TABLE payments DROP COLUMN processed;",
+        ),
+    ]
+```
+
+### Output with Ignored Migration
+
+```
+🔍 Checking 2 migrations for locks on large tables
+📊 Monitoring tables: myapp_user, myapp_order, payments
+🚫 COMMIT BLOCKED at ≥2 locked tables
+------------------------------------------------------------
+❌ app/migrations/0002_critical_migration.py
+   🚨 BLOCKED 3 LARGE TABLES: myapp_order, myapp_user, payments
+⏭️  SKIPPED app/migrations/0003_safe_critical.py - ignore comment found
+------------------------------------------------------------
+🚫 COMMIT BLOCKED!
+🚨 Found 1 critical migration(s):
+   📁 app/migrations/0002_critical_migration.py
+   📊 Locked tables: 3
+   🗂️  Tables: myapp_order, myapp_user, payments
+```
+
+**⚠️ Important**: Use ignore comments sparingly and only when you're absolutely sure the migration is safe to run. Always test such migrations thoroughly in a staging environment.
 
 ## 🔍 What It Detects
 

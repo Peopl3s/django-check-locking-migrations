@@ -28,6 +28,15 @@ from typing import (
 DEFAULT_LARGE_TABLES: Final[list[str]] = ["users", "orders", "payments", "audit_logs", "logs"]
 DEFAULT_MIN_TABLES: Final[int] = 2
 
+# Ignore comment patterns
+IGNORE_PATTERNS: Final[List[re.Pattern[str]]] = [
+    re.compile(r'#\s*nolock\b', re.IGNORECASE),
+    re.compile(r'#\s*no-lock-check\b', re.IGNORECASE),
+    re.compile(r'#\s*ignore-lock-check\b', re.IGNORECASE),
+    re.compile(r'"""\s*nolock\s*"""', re.IGNORECASE),
+    re.compile(r"'''\s*nolock\s*'''", re.IGNORECASE),
+]
+
 # Optimized regex patterns with compiled constants
 MIGRATION_FILE_PATTERN: re.Pattern[str] = re.compile(r"^\d{4}_.*\.py$")
 CREATE_MODEL_PATTERN: re.Pattern[str] = re.compile(
@@ -430,6 +439,11 @@ def load_config(config_path: Optional[str]) -> Dict[str, Any]:
         return {}
 
 
+def has_ignore_comment(content: str) -> bool:
+    """Check if migration file contains ignore comment."""
+    return any(pattern.search(content) for pattern in IGNORE_PATTERNS)
+
+
 def is_migration_file(file_path: str) -> bool:
     """Check if file is a Django migration file with optimized pattern matching."""
     path = Path(file_path)
@@ -535,6 +549,11 @@ def check_migration_files(
     for file_path in migration_files:
         content = read_file(file_path)
         if content is None:
+            continue
+
+        # Check if migration has ignore comment
+        if has_ignore_comment(content):
+            print(f"⏭️  SKIPPED {file_path} - ignore comment found")
             continue
 
         results = checker.analyze_migration(content)

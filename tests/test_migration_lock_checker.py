@@ -19,6 +19,7 @@ from migration_lock_checker.check_migration_locks import (
     check_migration_files,
     convert_model_to_table,
     extract_sql_from_runsql,
+    has_ignore_comment,
     is_migration_file,
     load_config,
     main,
@@ -576,4 +577,120 @@ class TestSampleMigrations:
         result = check_migration_files(safe_migrations, tables_to_check, "myapp", 2, False)
         
         assert result[0] is True  # Should pass - only safe migrations
+        assert len(result[1]) == 0  # No critical migrations
+
+
+class TestIgnoreComment:
+    """Test cases for ignore comment functionality"""
+
+    @pytest.mark.parametrize(
+        "content,expected",
+        [
+            ("# nolock", True),
+            ("# nolock\n", True),
+            ("# NOLock", True),
+            ("# no-lock-check", True),
+            ("# NO-LOCK-CHECK", True),
+            ("# ignore-lock-check", True),
+            ("# IGNORE-LOCK-CHECK", True),
+            ('""" nolock """', True),
+            ("''' nolock '''", True),
+            ("# some other comment", False),
+            ("# nolockcomment", False),
+            ("", False),
+            ("# nolock", True),
+            ("# no-lock-check", True),
+            ("# ignore-lock-check", True),
+        ],
+    )
+    def test_has_ignore_comment(self, content, expected):
+        """Test ignore comment detection"""
+        result = has_ignore_comment(content)
+        assert result == expected
+
+    def test_sample_migration_0009_ignored(self):
+        """Test 0009_ignored_migration.py - critical migration with ignore comment"""
+        migration_file = "tests/sample_migrations/0009_ignored_migration.py"
+        content = read_file(migration_file)
+        
+        # Should have ignore comment
+        assert has_ignore_comment(content) is True
+        
+        # Should still be detected as critical when analyzed
+        tables_set: FrozenSet[str] = frozenset(["myapp_user", "myapp_order", "payments"])
+        result = parse_django_migration_operations(content, tables_set, "myapp")
+        
+        assert result["migration_type"] == "schema_migration"
+        assert len(result["operations"]) == 3  # 2 AddField + 1 RunSQL
+        assert result["should_block_commit"] is True  # Still critical, but will be ignored
+        assert result["locked_count"] == 3
+
+    def test_check_migration_files_with_ignored_migration(self):
+        """Test checking migration files with ignored critical migration"""
+        migrations = [
+            "tests/sample_migrations/0002_critical_migration.py",  # Should be blocked
+            "tests/sample_migrations/0009_ignored_migration.py",  # Should be ignored
+        ]
+        
+        tables_to_check = ["myapp_user", "myapp_order", "myapp_purchaseorder", "payments"]
+        result = check_migration_files(migrations, tables_to_check, "myapp", 2, False)
+        
+        # Should fail due to 0002, but 0009 should be ignored
+        assert result[0] is False  # Should fail due to 0002
+        assert len(result[1]) == 1  # Only 0002 should be critical
+        assert result[1][0]["file"] == "tests/sample_migrations/0002_critical_migration.py"
+
+    def test_check_migration_files_all_ignored(self):
+        """Test checking when all critical migrations are ignored"""
+        migrations = [
+            "tests/sample_migrations/0009_ignored_migration.py",  # Should be ignored
+        ]
+        
+        tables_to_check = ["myapp_user", "myapp_order", "payments"]
+        result = check_migration_files(migrations, tables_to_check, "myapp", 2, False)
+        
+        # Should pass because the only critical migration is ignored
+        assert result[0] is True  # Should pass
+        assert len(result[1]) == 0  # No critical migrations
+
+    def test_check_migration_files_with_temp_ignored(self, temp_dir):
+        """Test checking with temporary migration file that has ignore comment"""
+        # Create a migration file with ignore comment and multiple large table locks
+        migration_content = '''
+"""
+Critical migration with ignore comment
+# no-lock-check
+"""
+
+from django.db import migrations, models
+
+class Migration(migrations.Migration):
+    dependencies = []
+
+    operations = [
+        migrations.AddField(
+            model_name='User',
+            name='email',
+            field=models.EmailField(max_length=254),
+        ),
+        migrations.AddField(
+            model_name='Order',
+            name='status',
+            field=models.CharField(max_length=50),
+        ),
+    ]
+'''
+
+        migration_file = create_temp_file(
+            temp_dir, "myapp/migrations/0001_ignored_critical.py", migration_content
+        )
+
+        # Use the correct table names with app prefix
+        tables_to_check = ["myapp_user", "myapp_order", "payments"]
+        result = check_migration_files(
+            [migration_file], tables_to_check, "myapp", 2, False
+        )
+
+        # Should pass because migration has ignore comment
+        assert result[0] is True  # Should pass
         assert len(result[1]) == 0  # No critical migrations
