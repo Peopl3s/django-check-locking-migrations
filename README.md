@@ -49,7 +49,6 @@ repos:
           "--tables", "users", "orders", "payments", "audit_logs",
           "--min-tables", "2",  # ⚠️ Block on 2+ tables
           "--verbose",
-          "--strict"  # ⚠️ Always block commit
         ]
 ```
 
