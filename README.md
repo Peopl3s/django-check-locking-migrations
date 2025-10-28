@@ -76,7 +76,6 @@ check-migration-locks --verbose --min-tables 3 app/migrations/*.py
 | `--min-tables` | `-m` | Minimum locked tables to block commit | `2` |
 | `--app` | `-a` | Django app name for table prefixing | `None` |
 | `--verbose` | `-v` | Enable detailed output | `False` |
-| `--strict` | `-s` | Strict mode (always block on issues) | `True` |
 | `--config` | `-c` | JSON configuration file | `None` |
 
 ### Configuration File
@@ -89,7 +88,6 @@ Create a `migration-lock-config.json`:
   "min_tables": 2,
   "app": "myapp",
   "verbose": true,
-  "strict": true
 }
 ```
 
@@ -121,10 +119,7 @@ Or use docstring format:
 ### Example Usage
 
 ```python
-"""
-Migration that locks multiple tables but is safe to run
 # nolock
-"""
 
 from django.db import migrations, models
 
