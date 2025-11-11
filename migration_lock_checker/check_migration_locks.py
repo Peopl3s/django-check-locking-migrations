@@ -419,7 +419,7 @@ def load_config(config_path: Optional[str]) -> Dict[str, Any]:
 
     config_file = Path(config_path)
     if not config_file.exists():
-        print(f"⚠️  Config file not found: {config_path}")
+        print(f"WARNING: Config file not found: {config_path}")
         return {}
 
     try:
@@ -432,10 +432,10 @@ def load_config(config_path: Optional[str]) -> Dict[str, Any]:
 
         return config
     except json.JSONDecodeError as e:
-        print(f"⚠️  Invalid JSON in config {config_path}: {e}")
+        print(f"WARNING: Invalid JSON in config {config_path}: {e}")
         return {}
     except Exception as e:
-        print(f"⚠️  Error loading config {config_path}: {e}")
+        print(f"WARNING: Error loading config {config_path}: {e}")
         return {}
 
 
@@ -466,16 +466,16 @@ def read_file(file_path: str) -> Optional[str]:
     try:
         return Path(file_path).read_text(encoding="utf-8")
     except FileNotFoundError:
-        print(f"❌ File not found: {file_path}")
+        print(f"ERROR: File not found: {file_path}")
         return None
     except PermissionError:
-        print(f"❌ Permission denied: {file_path}")
+        print(f"ERROR: Permission denied: {file_path}")
         return None
     except UnicodeDecodeError:
-        print(f"❌ Invalid encoding: {file_path}")
+        print(f"ERROR: Invalid encoding: {file_path}")
         return None
     except Exception as e:
-        print(f"❌ Error reading {file_path}: {e}")
+        print(f"ERROR: Error reading {file_path}: {e}")
         return None
 
 
@@ -529,7 +529,7 @@ def check_migration_files(
     migration_files = [f for f in filenames if is_migration_file(f)]
     if not migration_files:
         if verbose:
-            print("📝 No migration files to check")
+            print("INFO: No migration files to check")
         return True, []
 
     # Prepare checker
@@ -537,9 +537,9 @@ def check_migration_files(
     checker = MigrationFileChecker(large_tables_set, app_name)
 
     # Output header
-    print(f"🔍 Checking {len(migration_files)} migrations for locks on large tables")
-    print(f"📊 Monitoring tables: {', '.join(large_tables)}")
-    print(f"🚫 COMMIT BLOCKED at ≥{min_tables} locked tables")
+    print(f"CHECK: Checking {len(migration_files)} migrations for locks on large tables")
+    print(f"INFO: Monitoring tables: {', '.join(large_tables)}")
+    print(f"BLOCK: COMMIT BLOCKED at >={min_tables} locked tables")
     print("-" * 60)
 
     all_passed = True
@@ -553,7 +553,7 @@ def check_migration_files(
 
         # Check if migration has ignore comment
         if has_ignore_comment(content):
-            print(f"⏭️  SKIPPED {file_path} - ignore comment found")
+            print(f"SKIP: SKIPPED {file_path} - ignore comment found")
             continue
 
         results = checker.analyze_migration(content)
@@ -567,31 +567,31 @@ def check_migration_files(
                 "operations": results["operations"],
             })
 
-            print(f"❌ {file_path}")
-            print(f"   🚨 BLOCKED {results['locked_count']} LARGE TABLES: {', '.join(results['locked_tables'])}")
+            print(f"BLOCK: {file_path}")
+            print(f"   BLOCKED {results['locked_count']} LARGE TABLES: {', '.join(results['locked_tables'])}")
 
             if verbose:
-                print("   📋 Dangerous operations:")
+                print("   Dangerous operations:")
                 for op in results["operations"]:
                     if op.table_name in results["locked_tables"]:
                         print(f"     • {op.description} → {op.table_name}")
         else:
-            status = "✅ OK" if results["locked_count"] == 0 else "⚠️  Warning (1 table)"
-            print(f"{status} {file_path} - locked tables: {results['locked_count']}")
+            status = "OK" if results["locked_count"] == 0 else "WARNING (1 table)"
+            print(f"{status}: {file_path} - locked tables: {results['locked_count']}")
 
     # Output summary
     print("-" * 60)
     if critical_migrations:
-        print("🚫 COMMIT BLOCKED!")
-        print(f"🚨 Found {len(critical_migrations)} critical migration(s):")
+        print("BLOCK: COMMIT BLOCKED!")
+        print(f"CRITICAL: Found {len(critical_migrations)} critical migration(s):")
 
         for mig in critical_migrations:
-            print(f"\n   📁 {mig['file']}")
-            print(f"   📊 Locked tables: {mig['locked_count']}")
-            print(f"   🗂️  Tables: {', '.join(mig['locked_tables'])}")
+            print(f"\n   FILE: {mig['file']}")
+            print(f"   LOCKED: Locked tables: {mig['locked_count']}")
+            print(f"   TABLES: {', '.join(mig['locked_tables'])}")
 
             if verbose:
-                print("   ⚠️  Operations:")
+                print("   OPERATIONS:")
                 for op in mig["operations"]:
                     if op.table_name in mig["locked_tables"]:
                         desc = f"{op.description} ({op.risk_level})"
@@ -599,14 +599,14 @@ def check_migration_files(
                             desc += f" — {op.sql_snippet}"
                         print(f"     • {desc}")
 
-        print("\n💡 HOW TO FIX:")
+        print("\nHOW TO FIX:")
         print("   1. Split migration into multiple parts")
         print("   2. Use `atomic = False` in migration class")
         print("   3. Execute operations in separate migrations")
         print("   4. Bypass with: git commit --no-verify")
-        print("\n🔒 Commit BLOCKED due to DB lock risk!")
+        print("\nBLOCKED: Commit BLOCKED due to DB lock risk!")
     else:
-        print("✅ All migrations passed! Commit allowed.")
+        print("PASS: All migrations passed! Commit allowed.")
 
     return all_passed, critical_migrations
 
@@ -624,7 +624,7 @@ def main() -> int:
 
     if not args.filenames:
         if verbose:
-            print("📝 No files provided")
+            print("INFO: No files provided")
         return 0
 
     try:
@@ -637,16 +637,16 @@ def main() -> int:
         )
 
         if critical:
-            print(f"\n❌ Pre-commit hook FAILED: {len(critical)} migration(s) blocked")
+            print(f"\nERROR: Pre-commit hook FAILED: {len(critical)} migration(s) blocked")
             return 1
 
         return 0
 
     except KeyboardInterrupt:
-        print("\n⚠️  Operation cancelled by user")
+        print("\nWARNING: Operation cancelled by user")
         return 130
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
+        print(f"\nERROR: Unexpected error: {e}")
         return 1
 
 
